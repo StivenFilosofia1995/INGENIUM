@@ -20,8 +20,8 @@ class Settings(BaseSettings):
 
     backend_cors_origins: str = "http://localhost:5173"
 
-    llm_provider: str = "groq"
-    llm_model: str = "llama-3.1-70b-versatile"
+    llm_provider: str = "anthropic"
+    llm_model: str = "claude-3-5-sonnet-20241022"
     llm_temperature: float = 0.0
 
     @property

@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>INGENIUM TRACKER — demo de mapa (FIXTURE)</title>
+<meta name="description" content="Prototipo visual independiente del mapa de INGENIUM TRACKER. No requiere Node/npm: usa MapLibre GL JS y tiles gratuitos de OpenStreetMap vía CDN." />
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root {
+    /* Tokens de §7.1 del prompt maestro, copiados 1:1 de frontend/src/styles/tokens.css */
+    --ink: #0e1a1f;
+    --ink-2: #142530;
+    --rule: #294049;
+    --vellum: #e8e1d1;
+    --vellum-dim: #8fa3ab;
+    --amber: #f2b33d;
+    --vermilion: #e85d4a;
+    --jade: #4fc1a6;
+    --lilac: #a78bfa;
+    --sky: #5ba8f5;
+    --magenta: #ec6ec0;
+    --font-display: "Fraunces", Georgia, serif;
+    --font-reading: "Literata", Georgia, serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--ink);
+    color: var(--vellum);
+    font-family: var(--font-reading);
+  }
+
+  #app {
+    position: relative;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+  }
+
+  header.topbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.75rem 1.25rem;
+    background: linear-gradient(to bottom, var(--ink) 0%, rgba(14, 26, 31, 0.85) 70%, transparent 100%);
+    pointer-events: none;
+  }
+
+  header.topbar * { pointer-events: auto; }
+
+  h1.brand {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-size: 1.4rem;
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+
+  .fixture-banner {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ink);
+    background: var(--amber);
+    padding: 0.15rem 0.5rem;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+
+  #map { position: absolute; inset: 0; }
+
+  /* Retícula fina sobre el mapa, en --rule, como pide §7.2 ("estilo oscuro propio y
+     retícula en --rule"). Se dibuja por encima con un overlay de líneas repetidas. */
+  .map-grid-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    background-image:
+      repeating-linear-gradient(0deg, var(--rule) 0, var(--rule) 1px, transparent 1px, transparent 64px),
+      repeating-linear-gradient(90deg, var(--rule) 0, var(--rule) 1px, transparent 1px, transparent 64px);
+    opacity: 0.25;
+    mix-blend-mode: screen;
+  }
+
+  /* Leyenda de tradiciones — funcional y clicable (§7.1) */
+  .legend {
+    position: absolute;
+    left: 1.25rem;
+    bottom: 4.5rem;
+    z-index: 5;
+    background: var(--ink-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.75rem 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    max-width: 15rem;
+  }
+
+  .legend h2 {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    margin: 0 0 0.5rem;
+    color: var(--vellum);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: none;
+    border: none;
+    color: var(--vellum-dim);
+    cursor: pointer;
+    padding: 0.15rem 0;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  .legend-item[aria-pressed="false"] { opacity: 0.4; }
+
+  .legend-item:focus-visible,
+  .marker-btn:focus-visible,
+  .drawer button:focus-visible,
+  .relation-switch button:focus-visible {
+    outline: 2px solid var(--sky);
+    outline-offset: 2px;
+  }
+
+  .swatch {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  .swatch.none {
+    background: transparent;
+    border: 1px dashed var(--vellum-dim);
+  }
+
+  /* Conmutador de relación geográfica (§7.2) */
+  .relation-switch {
+    position: absolute;
+    top: 4.5rem;
+    right: 1.25rem;
+    z-index: 5;
+    display: flex;
+    gap: 0.25rem;
+    background: var(--ink-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+  }
+
+  .relation-switch button {
+    background: transparent;
+    border: none;
+    color: var(--vellum-dim);
+    padding: 0.35rem 0.6rem;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .relation-switch button[aria-pressed="true"] {
+    background: var(--rule);
+    color: var(--vellum);
+  }
+
+  /* Marcadores del mapa como <button> reales: navegables por teclado */
+  .marker-btn {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--ink);
+    box-shadow: 0 0 0 1px rgba(232, 225, 209, 0.3);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .marker-btn.no-tradition {
+    background: transparent;
+    border: 2px dashed var(--vellum-dim);
+  }
+
+  /* Hilo SVG de trazabilidad (elemento firma, §7.1) */
+  #thread-svg {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    width: 100%;
+    height: 100%;
+  }
+
+  #thread-svg path {
+    fill: none;
+    stroke: var(--vellum);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    #thread-svg path {
+      transition: d 220ms ease-out;
+    }
+    .drawer {
+      transition: transform 260ms ease-out;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .drawer { transition: none; }
+  }
+
+  /* Cajón de marginalia — se desliza desde el borde derecho (elemento firma, §7.1) */
+  .drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    width: min(360px, 92vw);
+    background: var(--vellum);
+    color: var(--ink);
+    border-left: 1px solid var(--rule);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+    transform: translateX(100%);
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+    overflow-y: auto;
+  }
+
+  .drawer.open { transform: translateX(0); }
+
+  .drawer-close {
+    align-self: flex-end;
+    background: none;
+    border: 1px solid var(--ink);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .role-stamp {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border: 2px solid var(--vermilion);
+    color: var(--vermilion);
+    padding: 0.2rem 0.5rem;
+    border-radius: 2px;
+    transform: rotate(-2deg);
+    margin: 0.75rem 0;
+    width: fit-content;
+  }
+
+  blockquote.evidence {
+    font-family: var(--font-reading);
+    font-size: 1.05rem;
+    line-height: 1.5;
+    border-left: 3px solid var(--rule);
+    padding-left: 0.85rem;
+    margin: 0.5rem 0 1rem;
+  }
+
+  .why-block {
+    font-family: var(--font-reading);
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+
+  .provenance {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: #4a5a5f;
+    margin-top: auto;
+    padding-top: 1rem;
+    border-top: 1px dashed var(--rule);
+    word-break: break-all;
+  }
+
+  .drawer-fixture-tag {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    background: var(--amber);
+    color: var(--ink);
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 2px;
+    margin-bottom: 0.5rem;
+    width: fit-content;
+  }
+
+  .attribution-note {
+    position: absolute;
+    left: 1.25rem;
+    bottom: 1rem;
+    z-index: 5;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--vellum-dim);
+  }
+
+  #sr-status { position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1 class="brand">INGENIUM TRACKER</h1>
+    <span class="fixture-banner">FIXTURE — prototipo visual, sin datos reales</span>
+  </header>
+
+  <div id="map" role="application" aria-label="Mapa de menciones de ingenium (datos de ejemplo)"></div>
+  <div class="map-grid-overlay" aria-hidden="true"></div>
+  <svg id="thread-svg" aria-hidden="true"><path id="thread-path" d=""></path></svg>
+
+  <nav class="relation-switch" aria-label="Relación geográfica representada">
+    <button type="button" data-relation="lugar_de_escritura" aria-pressed="true">escritura</button>
+    <button type="button" data-relation="lugar_de_publicación" aria-pressed="false">publicación</button>
+    <button type="button" data-relation="afiliación_autor" aria-pressed="false">afiliación</button>
+    <button type="button" data-relation="lugar_de_custodia_del_manuscrito" aria-pressed="false">custodia</button>
+  </nav>
+
+  <section class="legend" aria-label="Leyenda de tradición intelectual (clicable, filtra el mapa)">
+    <h2>Tradición</h2>
+    <div id="legend-list"></div>
+  </section>
+
+  <p class="attribution-note">Tiles © <a href="https://www.openstreetmap.org/copyright" style="color:inherit">OpenStreetMap contributors</a> — MapLibre GL JS</p>
+
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Cajón de marginalia">
+    <button class="drawer-close" id="drawer-close" type="button">cerrar ✕</button>
+    <div id="drawer-body"></div>
+  </aside>
+
+  <div id="sr-status" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+/*
+ * Prototipo visual independiente (sin npm/Node) del Mapa de INGENIUM TRACKER (§7.2).
+ * Todos los puntos son FIXTURE_* explícitos: no representan citas, autores ni datos
+ * reales (§10 del prompt maestro). Su único propósito es validar la dirección visual
+ * "cartografía filológica" y el comportamiento del cajón de marginalia antes de construir
+ * el componente React real de FASE 5.
+ */
+
+const TRADITION_COLORS = {
+  "retórica latina": "var(--amber)",
+  "humanismo": "var(--vermilion)",
+  "barroco": "var(--vermilion)",
+  "ilustración": "var(--jade)",
+  "idealismo": "var(--lilac)",
+  "fenomenología": "var(--sky)",
+  "filosofía de la técnica": "var(--magenta)",
+  "teoría de medios": "var(--magenta)",
+};
+
+function colorFor(tradition) {
+  const key = TRADITION_COLORS[tradition];
+  if (!key) return null;
+  return getComputedStyle(document.documentElement).getPropertyValue(key.slice(4, -1)).trim() || key;
+}
+
+// Datos de ejemplo (FIXTURE): coordenadas reales de ciudades (dato geográfico verificable),
+// pero autor/obra/cita son placeholders explícitos, no afirmaciones filológicas reales.
+const FIXTURE_POINTS = [
+  {
+    id: "FIXTURE_1",
+    lugar: "Roma",
+    lat: 41.9028, lon: 12.4964,
+    relation: "lugar_de_escritura",
+    tradition: "retórica latina",
+    autor: "FIXTURE_AUTOR_A",
+    anio: "s. I a.C. (ejemplo)",
+    forma_hallada: "ingenium",
+    rol: "define",
+    claim: "[Texto de ejemplo] El ingenium se define como facultad natural distinta del ars.",
+    why: "[Texto de ejemplo] El propio pasaje da como razón que el ars se aprende y el ingenium se nace con él.",
+    cita: "[FIXTURE] «...ingenium quod natura, non doctrina paratur...»",
+    url: "https://example.invalid/fixture-1",
+  },
+  {
+    id: "FIXTURE_2",
+    lugar: "París",
+    lat: 48.8566, lon: 2.3522,
+    relation: "lugar_de_publicación",
+    tradition: "humanismo",
+    autor: "FIXTURE_AUTOR_B",
+    anio: "1550 (ejemplo)",
+    forma_hallada: "esprit",
+    rol: "traduce",
+    claim: "[Texto de ejemplo] Se propone 'esprit' como equivalente vernáculo de ingenium.",
+    why: "[Texto de ejemplo] El autor razona que el latín ya no es lengua viva para el lector culto.",
+    cita: "[FIXTURE] «...que nous nommons esprit, les anciens l'appelaient ingenium...»",
+    url: "https://example.invalid/fixture-2",
+  },
+  {
+    id: "FIXTURE_3",
+    lugar: "Königsberg (Kaliningrado)",
+    lat: 54.7104, lon: 20.4522,
+    relation: "afiliación_autor",
+    tradition: "idealismo",
+    autor: "FIXTURE_AUTOR_C",
+    anio: "1790 (ejemplo)",
+    forma_hallada: "Witz",
+    rol: "distingue",
+    claim: "[Texto de ejemplo] Distingue Witz del juicio (Urteilskraft) como facultades separadas.",
+    why: "[Texto de ejemplo] Porque el Witz produce y el juicio evalúa, según el propio argumento.",
+    cita: "[FIXTURE] «...der Witz ist ... nicht dasselbe wie die Urteilskraft...»",
+    url: "https://example.invalid/fixture-3",
+  },
+  {
+    id: "FIXTURE_4",
+    lugar: "Friburgo",
+    lat: 47.9990, lon: 7.8421,
+    relation: "afiliación_autor",
+    tradition: "fenomenología",
+    autor: "FIXTURE_AUTOR_D",
+    anio: "1927 (ejemplo)",
+    forma_hallada: "ingenuity",
+    rol: "opone",
+    claim: "[Texto de ejemplo] Opone la ingenuity técnica a la comprensión originaria del ser.",
+    why: "[Texto de ejemplo] El texto argumenta que la primera oculta a la segunda.",
+    cita: "[FIXTURE] «...mere technical ingenuity conceals more than it reveals...»",
+    url: "https://example.invalid/fixture-4",
+  },
+  {
+    id: "FIXTURE_5",
+    lugar: "Toronto",
+    lat: 43.65107, lon: -79.347015,
+    relation: "afiliación_autor",
+    tradition: "teoría de medios",
+    autor: "FIXTURE_AUTOR_E",
+    anio: "1964 (ejemplo)",
+    forma_hallada: "ingenuity",
+    rol: "apropia",
+    claim: "[Texto de ejemplo] Reapropia la ingenuity como extensión técnica de facultades humanas.",
+    why: "[Texto de ejemplo] Según el propio texto, todo medio extiende una facultad previa.",
+    cita: "[FIXTURE] «...the machine as an extension of human ingenuity...»",
+    url: "https://example.invalid/fixture-5",
+  },
+  {
+    id: "FIXTURE_6",
+    lugar: "Nápoles",
+    lat: 40.8518, lon: 14.2681,
+    relation: "lugar_de_escritura",
+    tradition: "barroco",
+    autor: "FIXTURE_AUTOR_F",
+    anio: "1654 (ejemplo)",
+    forma_hallada: "ingegno",
+    rol: "ejemplifica",
+    claim: "[Texto de ejemplo] Ejemplifica el ingegno mediante la agudeza conceptista.",
+    why: "[Texto de ejemplo] El autor lo razona por analogía con el rayo que une lo distante.",
+    cita: "[FIXTURE] «...l'arguzia è figlia dell'ingegno...»",
+    url: "https://example.invalid/fixture-6",
+  },
+  {
+    id: "FIXTURE_7",
+    lugar: "Edimburgo",
+    lat: 55.9533, lon: -3.1883,
+    relation: "lugar_de_publicación",
+    tradition: "ilustración",
+    autor: "FIXTURE_AUTOR_G",
+    anio: "1776 (ejemplo)",
+    forma_hallada: "wit",
+    rol: "critica",
+    claim: "[Texto de ejemplo] Critica el wit desligado del juicio como mero adorno retórico.",
+    why: "[Texto de ejemplo] Razona que sin juicio el wit degenera en sofistería.",
+    cita: "[FIXTURE] «...wit without judgment is but folly well dressed...»",
+    url: "https://example.invalid/fixture-7",
+  },
+  {
+    id: "FIXTURE_8",
+    lugar: "Coímbra",
+    lat: 40.2111, lon: -8.4291,
+    relation: "lugar_de_custodia_del_manuscrito",
+    tradition: null,
+    autor: "FIXTURE_AUTOR_H",
+    anio: "desconocido",
+    forma_hallada: "engenho",
+    rol: "historiza",
+    claim: "[Texto de ejemplo] Historiza el uso de engenho entre escolástica tardía y humanismo.",
+    why: null,
+    insufficient_evidence: true,
+    cita: "[FIXTURE] «...engenho, segundo os antigos, dizia respeito à alma...»",
+    url: "https://example.invalid/fixture-8",
+  },
+];
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: {
+    version: 8,
+    sources: {
+      osm: {
+        type: "raster",
+        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: "© OpenStreetMap contributors",
+      },
+    },
+    layers: [
+      {
+        id: "osm-dark",
+        type: "raster",
+        source: "osm",
+        paint: {
+          // Aproximación de "estilo oscuro propio" (§7.2) sobre tiles raster libres,
+          // sin depender de un proveedor vectorial con token.
+          "raster-brightness-max": 0.55,
+          "raster-brightness-min": 0.05,
+          "raster-saturation": -0.4,
+          "raster-contrast": 0.1,
+        },
+      },
+    ],
+  },
+  center: [10, 47],
+  zoom: 3.2,
+  attributionControl: false,
+});
+
+map.addControl(new maplibregl.AttributionControl({ compact: true }));
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+let activeRelation = "lugar_de_escritura";
+const disabledTraditions = new Set();
+const markers = new Map(); // id -> maplibregl.Marker
+let openPointId = null;
+
+function buildLegend() {
+  const list = document.getElementById("legend-list");
+  const entries = Object.keys(TRADITION_COLORS).filter(
+    (t, i, arr) => arr.indexOf(t) === i
+  );
+  // Colapsa "humanismo"/"barroco" y "filosofía de la técnica"/"teoría de medios"
+  // como pares que comparten color, mostrando una sola entrada por color distinto.
+  const uniqueByColor = [
+    ["retórica latina", "amber"],
+    ["humanismo y barroco", "vermilion"],
+    ["ilustración", "jade"],
+    ["idealismo", "lilac"],
+    ["fenomenología", "sky"],
+    ["filosofía de la técnica y teoría de medios", "magenta"],
+  ];
+  uniqueByColor.forEach(([label, varName]) => {
+    const btn = document.createElement("button");
+    btn.className = "legend-item";
+    btn.type = "button";
+    btn.setAttribute("aria-pressed", "true");
+    btn.dataset.label = label;
+    btn.innerHTML = `<span class="swatch" style="background:var(--${varName})"></span>${label}`;
+    btn.addEventListener("click", () => toggleTradition(label, btn));
+    list.appendChild(btn);
+  });
+  const noneBtn = document.createElement("button");
+  noneBtn.className = "legend-item";
+  noneBtn.type = "button";
+  noneBtn.setAttribute("aria-pressed", "true");
+  noneBtn.innerHTML = `<span class="swatch none"></span>sin tradición determinada`;
+  noneBtn.addEventListener("click", () => toggleTradition("__none__", noneBtn));
+  list.appendChild(noneBtn);
+}
+
+function toggleTradition(label, btn) {
+  const pressed = btn.getAttribute("aria-pressed") === "true";
+  btn.setAttribute("aria-pressed", String(!pressed));
+  if (pressed) disabledTraditions.add(label); else disabledTraditions.delete(label);
+  renderMarkers();
+}
+
+function labelFor(tradition) {
+  if (!tradition) return "__none__";
+  if (tradition === "humanismo" || tradition === "barroco") return "humanismo y barroco";
+  if (tradition === "filosofía de la técnica" || tradition === "teoría de medios")
+    return "filosofía de la técnica y teoría de medios";
+  return tradition;
+}
+
+function renderMarkers() {
+  markers.forEach((m) => m.remove());
+  markers.clear();
+
+  FIXTURE_POINTS.filter((p) => p.relation === activeRelation).forEach((point) => {
+    const label = labelFor(point.tradition);
+    if (disabledTraditions.has(label)) return;
+
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "marker-btn" + (point.tradition ? "" : " no-tradition");
+    const color = colorFor(point.tradition);
+    if (color) el.style.background = color;
+    el.setAttribute("aria-label", `${point.autor}, ${point.anio}, forma hallada: ${point.forma_hallada}`);
+    el.addEventListener("click", () => openDrawer(point));
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDrawer(point); }
+    });
+
+    const marker = new maplibregl.Marker({ element: el })
+      .setLngLat([point.lon, point.lat])
+      .addTo(map);
+    markers.set(point.id, marker);
+  });
+
+  if (openPointId && !markers.has(openPointId)) closeDrawer();
+}
+
+function roleLabel(role) {
+  const labels = {
+    define: "define", distingue: "distingue", critica: "critica", apropia: "apropia",
+    historiza: "historiza", traduce: "traduce", ejemplifica: "ejemplifica", opone: "opone",
+  };
+  return labels[role] || role;
+}
+
+function openDrawer(point) {
+  openPointId = point.id;
+  const drawer = document.getElementById("drawer");
+  const body = document.getElementById("drawer-body");
+  body.innerHTML = `
+    <span class="drawer-fixture-tag">FIXTURE — dato de ejemplo</span>
+    <h2 style="font-family:var(--font-display);font-size:1.3rem;margin:0.2rem 0;">${point.autor}</h2>
+    <p style="font-family:var(--font-mono);font-size:0.78rem;color:#4a5a5f;margin:0 0 0.25rem;">
+      ${point.anio} · ${point.lugar} · forma hallada: <strong>${point.forma_hallada}</strong>
+    </p>
+    <span class="role-stamp">${roleLabel(point.rol)}</span>
+    <blockquote class="evidence">${point.cita}</blockquote>
+    <div class="why-block">
+      ${point.insufficient_evidence
+        ? "<em>El texto no da razón explícita (insufficient_evidence = true).</em>"
+        : point.why}
+    </div>
+    <p class="provenance">procedencia: ${point.url}</p>
+  `;
+  drawer.classList.add("open");
+  drawer.setAttribute("aria-hidden", "false");
+  document.getElementById("drawer-close").focus();
+  document.getElementById("sr-status").textContent = `Mostrando mención de ejemplo de ${point.autor}.`;
+  drawMapThread(point);
+  map.on("move", () => drawMapThread(point));
+}
+
+function closeDrawer() {
+  openPointId = null;
+  const drawer = document.getElementById("drawer");
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  document.getElementById("thread-path").setAttribute("d", "");
+}
+
+function drawMapThread(point) {
+  if (openPointId !== point.id) return;
+  const marker = markers.get(point.id);
+  if (!marker) return;
+  const { x, y } = map.project([point.lon, point.lat]);
+  const drawerEl = document.getElementById("drawer");
+  const drawerX = drawerEl.getBoundingClientRect().left;
+  const midY = window.innerHeight * 0.3;
+  const path = `M ${x} ${y} C ${(x + drawerX) / 2} ${y}, ${(x + drawerX) / 2} ${midY}, ${drawerX} ${midY}`;
+  document.getElementById("thread-path").setAttribute("d", path);
+}
+
+document.getElementById("drawer-close").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && openPointId) closeDrawer();
+});
+
+document.querySelectorAll(".relation-switch button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".relation-switch button").forEach((b) => b.setAttribute("aria-pressed", "false"));
+    btn.setAttribute("aria-pressed", "true");
+    activeRelation = btn.dataset.relation;
+    closeDrawer();
+    renderMarkers();
+  });
+});
+
+map.on("load", () => {
+  buildLegend();
+  renderMarkers();
+});
+</script>
+</body>
+</html>
