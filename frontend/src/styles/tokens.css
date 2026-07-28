@@ -1,0 +1,27 @@
+/* Tokens de la dirección visual "cartografía filológica" (§7.1 del prompt maestro). */
+:root {
+  --ink: #0e1a1f;
+  --ink-2: #142530;
+  --rule: #294049;
+  --vellum: #e8e1d1;
+  --vellum-dim: #8fa3ab;
+
+  /* Colores categóricos de tradición intelectual (funcionales, no decorativos) */
+  --amber: #f2b33d; /* retórica latina */
+  --vermilion: #e85d4a; /* humanismo y barroco */
+  --jade: #4fc1a6; /* ilustración */
+  --lilac: #a78bfa; /* idealismo y romanticismo */
+  --sky: #5ba8f5; /* fenomenología */
+  --magenta: #ec6ec0; /* filosofía de la técnica y teoría de medios */
+
+  /* Escala tipográfica */
+  --font-display: "Fraunces", serif;
+  --font-reading: "Literata", serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --step-0: 1rem;
+  --step-1: 1.25rem;
+  --step-2: 1.563rem;
+  --step-3: 1.953rem;
+  --step-4: 2.441rem;
+}

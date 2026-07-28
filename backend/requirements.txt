@@ -1,0 +1,14 @@
+# FASE 0/1: núcleo de la API. Las dependencias pesadas de extracción/NLP
+# (pymupdf, spacy, cltk, sentence-transformers, ocrmypdf, etc.) se añaden
+# a partir de FASE 2 para no inflar la imagen antes de necesitarlas.
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+httpx==0.28.1
+tenacity==9.0.0
+structlog==24.4.0
+apscheduler==3.10.4
+asyncpg==0.30.0
+sqlalchemy[asyncio]==2.0.36
+python-multipart==0.0.19

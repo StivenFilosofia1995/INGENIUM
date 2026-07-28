@@ -1,0 +1,43 @@
+# --- Python / backend ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# --- Env & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Supabase local ---
+supabase/.branches/
+supabase/.temp/
+
+# --- Data / temp processing (nunca se persiste texto completo) ---
+tmp/
+data/tmp/
+*.tmp
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# --- Export artifacts ---
+vault/
+*.zip
