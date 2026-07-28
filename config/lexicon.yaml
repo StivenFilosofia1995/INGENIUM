@@ -1,0 +1,174 @@
+# Léxico multilingüe de rastreo de "ingenium" (§5.1 del prompt maestro).
+#
+# Cada grupo define una lista de formas con su expresión regular (sensible a flexión)
+# y su idioma. `disambiguation_required: true` marca los grupos cuyas formas también
+# tienen sentidos no filológicos habituales (máquina, artefacto, topónimo) y que por
+# tanto deben pasar por el clasificador de desambiguación de sentido (§5.1) antes de
+# fijar `mentions.sense`. Todas las expresiones regulares se aplican sin distinguir
+# mayúsculas/minúsculas y con límites de palabra (\b) salvo que se indique lo contrario.
+#
+# Este archivo es la fuente de verdad editable por el usuario: el servicio de detección
+# de menciones (FASE 2) lo carga en tiempo de ejecución, no hay una copia duplicada en
+# la base de datos.
+
+version: 1
+
+groups:
+  # ------------------------------------------------------------------
+  # Núcleo latino
+  # ------------------------------------------------------------------
+  - id: nucleo_latino
+    lang: la
+    disambiguation_required: false
+    default_sense: facultad
+    terms:
+      - form: ingenium
+        regex: '\bingenium\b'
+      - form: ingenii
+        regex: '\bingenii\b'
+      - form: ingenio
+        regex: '\bingenio\b'
+        note: >-
+          Forma latina (ablativo/dativo de ingenium). Coincide en superficie con el
+          "ingenio" español/portugués: el clasificador de desambiguación decide el
+          idioma real por contexto antes de fijar `lang`.
+      - form: ingeniis
+        regex: '\bingeniis\b'
+      - form: ingenia
+        regex: '\bingenia\b'
+      - form: ingeniorum
+        regex: '\bingeniorum\b'
+      - form: ingeniosus
+        regex: '\bingeniosus\b'
+      - form: ingeniosa
+        regex: '\bingeniosa\b'
+      - form: ingeniose
+        regex: '\bingeniose\b'
+
+  # ------------------------------------------------------------------
+  # Romance: español
+  # ------------------------------------------------------------------
+  - id: romance_es
+    lang: es
+    disambiguation_required: true
+    default_sense: ambiguo
+    note: >-
+      "ingenio" en español también significa máquina, artificio e ingenio azucarero
+      (§5.1). El sentido por defecto es "ambiguo" hasta que el clasificador de
+      desambiguación decida entre facultad / artefacto / topónimo.
+    terms:
+      - form: ingenio
+        regex: '\bingenios?\b'
+      - form: ingeniosidad
+        regex: '\bingeniosidad(?:es)?\b'
+      - form: ingenioso
+        regex: '\bingenios[ao]s?\b'
+
+  # ------------------------------------------------------------------
+  # Romance: italiano
+  # ------------------------------------------------------------------
+  - id: romance_it
+    lang: it
+    disambiguation_required: false
+    default_sense: facultad
+    terms:
+      - form: ingegno
+        regex: '\bingegn(?:o|i)\b'
+
+  # ------------------------------------------------------------------
+  # Romance: francés
+  # ------------------------------------------------------------------
+  - id: romance_fr
+    lang: fr
+    disambiguation_required: true
+    default_sense: ambiguo
+    note: >-
+      "engin" es casi siempre artefacto/máquina en francés moderno; "esprit" es
+      altamente polisémico (espíritu, mente, ingenio, fantasma). Ambas formas
+      requieren desambiguación de contexto obligatoria antes de aceptarse como
+      `sense = facultad`.
+    terms:
+      - form: engin
+        regex: '\bengins?\b'
+      - form: esprit
+        regex: '\besprits?\b'
+      - form: génie
+        regex: '\bgénies?\b'
+        disambiguation_required: false
+        default_sense: facultad
+
+  # ------------------------------------------------------------------
+  # Romance: portugués
+  # ------------------------------------------------------------------
+  - id: romance_pt
+    lang: pt
+    disambiguation_required: true
+    default_sense: ambiguo
+    note: >-
+      "engenho" en portugués también significa ingenio azucarero (topónimo/artefacto
+      histórico) (§5.1).
+    terms:
+      - form: engenho
+        regex: '\bengenhos?\b'
+
+  # ------------------------------------------------------------------
+  # Germánico e inglés
+  # ------------------------------------------------------------------
+  - id: germanico_de
+    lang: de
+    disambiguation_required: false
+    default_sense: facultad
+    terms:
+      - form: Witz
+        regex: '\bWitz(?:e|en)?\b'
+      - form: Scharfsinn
+        regex: '\bScharfsinn(?:ig)?\b'
+
+  - id: ingles_en
+    lang: en
+    disambiguation_required: false
+    default_sense: facultad
+    terms:
+      - form: wit
+        regex: '\bwits?\b'
+      - form: ingenuity
+        regex: '\bingenuity\b'
+      - form: wittiness
+        regex: '\bwittiness\b'
+
+  # ------------------------------------------------------------------
+  # Vecinos conceptuales (activan el análisis de oposición, §5.1; no cuentan
+  # como menciones de "ingenium" en sí, pero se buscan en la misma ventana de
+  # contexto para poblar `concept_edges` con edge_type = 'oposición_explícita'
+  # o 'coocurrencia').
+  # ------------------------------------------------------------------
+  - id: vecinos_conceptuales
+    lang: mixed
+    disambiguation_required: false
+    default_sense: null
+    is_conceptual_neighbor: true
+    terms:
+      - form: ratio
+        regex: '\bratio(?:nis|ne)?\b'
+        lang: la
+      - form: methodus
+        regex: '\bmethodus\b'
+        lang: la
+      - form: iudicium
+        regex: '\biudicium\b'
+        lang: la
+      - form: memoria
+        regex: '\bmemoria[em]?\b'
+        lang: la
+      - form: ars
+        regex: '\bars\b'
+        lang: la
+      - form: techne
+        regex: '\b(?:techne|technē)\b'
+        lang: grc
+      - form: phronesis
+        regex: '\bphronesis\b'
+        lang: grc
+      - form: genius
+        regex: '\bgenius\b'
+        lang: la

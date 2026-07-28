@@ -1,0 +1,31 @@
+# Lista blanca de dominios para el crawler dirigido (§4, prioridad 2).
+#
+# El crawler SOLO visita dominios listados aquí. Antes de cada rastreo se descarga y
+# respeta `robots.txt` y la cabecera `Crawl-delay` del dominio; los códigos 429/503
+# detienen el crawl de ese dominio durante el tiempo indicado (o un backoff por defecto
+# si no se especifica). Nunca se eluden paywalls, captchas ni muros de sesión.
+#
+# Edita este archivo para añadir o quitar dominios. `rate_limit_rpm` es un límite propio
+# adicional (nunca lo sobrepasa aunque el sitio permita más).
+
+domains:
+  - domain: philpapers.org
+    source_name: PhilPapers
+    robots_ok: true
+    rate_limit_rpm: 6
+    notes: "Metadatos y enlaces a versiones de acceso abierto cuando existen."
+
+  - domain: monoskop.org
+    source_name: Monoskop
+    robots_ok: true
+    rate_limit_rpm: 6
+    notes: "Wiki de humanidades digitales y teoría de medios; verificar licencia por página."
+
+# Patrones de dominio institucional permitidos (además de los dominios exactos de arriba).
+# El crawler los usa como filtro adicional, nunca para inferir URLs no descubiertas por
+# enlace real.
+domain_patterns:
+  - pattern: "*.edu"
+    rate_limit_rpm: 6
+  - pattern: "*.ac.*"
+    rate_limit_rpm: 6

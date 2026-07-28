@@ -32,6 +32,48 @@ jobs:
       - name: Tests (pytest + cobertura)
         run: python -m pytest --cov --cov-report=term-missing
 
+  database:
+    name: Migraciones Supabase (esquema + RLS + seeds)
+    runs-on: ubuntu-latest
+    # Equivalente de CI a `supabase db reset` (§9, criterio de aceptación FASE 1):
+    # la máquina de desarrollo local no tiene Docker/Supabase CLI disponibles, así que
+    # esta es la evidencia real de que las migraciones aplican sin error y los seeds
+    # pueblan filas verificables con una consulta de ejemplo.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ingenium
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar cliente psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Aplicar migraciones en orden
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "Aplicando $f"
+            PGPASSWORD=postgres psql -h localhost -U postgres -d ingenium -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Aplicar seed.sql
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -d ingenium -v ON_ERROR_STOP=1 -f supabase/seed.sql
+
+      - name: Consulta de ejemplo sobre los seeds
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ingenium -v ON_ERROR_STOP=1 -c \
+            "SELECT count(*) AS sources_count FROM sources; SELECT count(*) AS concepts_count FROM concepts; SELECT count(*) AS map_points FROM mv_map_points;"
+
   frontend:
     name: Frontend (lint + tests + build)
     runs-on: ubuntu-latest
