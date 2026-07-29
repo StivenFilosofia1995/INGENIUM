@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evolución del Ingenio: Mapa Real y Red Relacional Extendida</title>
+    
+    <!-- Tailwind CSS para UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Three.js (Base 3D) -->
+    <script src="https://unpkg.com/three@0.136.0/build/three.min.js"></script>
+    
+    <!-- Globe.gl para el Mundo Real y Mapas de Calor -->
+    <script src="https://unpkg.com/globe.gl@2.32.1/dist/globe.gl.min.js"></script>
+    
+    <!-- 3D Force Graph para la red tipo Obsidian -->
+    <script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
+    
+    <!-- Phosphor Icons para la UI -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #020617; /* Slate 950 */
+            color: #f8fafc;
+        }
+
+        /* Glassmorphism utilities */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Canvas containers - Z-Index handling crucial para interactividad */
+        #globe-container, #graph-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transition: opacity 0.8s ease;
+        }
+
+        #globe-container {
+            opacity: 1;
+            z-index: 5;
+            cursor: grab;
+        }
+        
+        #graph-container {
+            opacity: 0;
+            z-index: 1; /* Oculto detrás del globo inicialmente */
+            pointer-events: none;
+        }
+        
+        #globe-container:active, #graph-container:active { cursor: grabbing; }
+
+        /* UI Overlays */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .pointer-events-auto { pointer-events: auto; }
+
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            margin-top: -10px;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 1);
+            border: 3px solid #0f172a;
+            transition: transform 0.15s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: linear-gradient(to right, #1e293b, #475569, #1e293b);
+            border-radius: 3px;
+        }
+        
+        /* Tooltips */
+        .scene-tooltip {
+            background: rgba(15, 23, 42, 0.95) !important;
+            color: #f1f5f9 !important;
+            padding: 10px 14px !important;
+            border-radius: 8px !important;
+            border: 1px solid #38bdf8 !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13px !important;
+            pointer-events: none;
+            max-width: 250px;
+            white-space: normal !important;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Containers -->
+    <div id="globe-container"></div>
+    <div id="graph-container"></div>
+
+    <!-- Interactive UI Layer -->
+    <div id="ui-layer" class="p-4 md:p-6 justify-between h-full">
+        
+        <!-- Header & Controls -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pointer-events-auto">
+            <div class="glass-panel p-4 rounded-xl w-full md:w-auto">
+                <h1 class="text-xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-sky-400 via-indigo-400 to-purple-400">
+                    Cartografía del Ingenium
+                </h1>
+                <p class="text-xs md:text-sm text-slate-300 mt-1">Del Humanismo al Silicio: Evolución Técnica y Filosófica</p>
+            </div>
+            
+            <div class="glass-panel p-2 rounded-xl flex gap-2 w-full md:w-auto">
+                <button id="btn-globe" class="flex-1 md:flex-none px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition font-medium flex items-center justify-center gap-2 shadow-lg shadow-sky-500/30">
+                    <i class="ph ph-globe-hemisphere-west text-xl"></i> Mapamundi Real
+                </button>
+                <button id="btn-graph" class="flex-1 md:flex-none px-5 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition font-medium flex items-center justify-center gap-2 border border-slate-700">
+                    <i class="ph ph-graph text-xl"></i> Red Conceptual
+                </button>
+                <button id="btn-add-doc" class="flex-1 md:flex-none px-5 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition font-medium flex items-center justify-center gap-2 border border-amber-500/50 shadow-lg shadow-amber-500/20">
+                    <i class="ph ph-file-plus text-xl"></i> Agregar Documento
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area (Panel de Información) -->
+        <main class="flex-1 flex items-end justify-start md:justify-end py-4 pointer-events-none relative">
+            
+            <!-- Panel Lateral de Detalles -->
+            <div id="info-panel" class="glass-panel w-full md:w-[480px] p-6 rounded-2xl pointer-events-auto transform transition-all duration-500 translate-x-8 opacity-0 max-h-[65vh] flex flex-col absolute right-0 bottom-4 border-l-4 border-l-sky-500">
+                <div class="flex justify-between items-start mb-4 shrink-0">
+                    <h2 id="info-title" class="text-2xl font-bold text-white leading-tight"></h2>
+                    <button id="close-info" class="text-slate-400 hover:text-sky-400 transition bg-slate-800 p-1.5 rounded-full">
+                        <i class="ph ph-x text-xl"></i>
+                    </button>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mb-4 shrink-0">
+                    <span id="info-type" class="px-2.5 py-1 rounded text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"></span>
+                    <span id="info-country" class="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"></span>
+                    <span id="info-year" class="px-2.5 py-1 rounded text-xs font-bold bg-slate-800 text-slate-300 border border-slate-600"></span>
+                    <span id="info-origin" class="px-2.5 py-1 rounded text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 hidden"></span>
+                </div>
+                <div id="info-desc" class="text-sm md:text-base text-slate-300 leading-relaxed overflow-y-auto pr-3 custom-scrollbar font-light">
+                    <!-- Dynamic content injected here -->
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer / Timeline Control -->
+        <footer id="timeline-container" class="glass-panel p-5 md:p-6 rounded-2xl pointer-events-auto transition-opacity duration-500 w-full max-w-5xl mx-auto border-t border-slate-700/50">
+            <div class="flex justify-between items-end mb-4">
+                <div>
+                    <h3 class="text-sm md:text-base font-semibold text-slate-300 uppercase tracking-wide">Cronología: <span id="year-display" class="text-sky-400 font-mono text-3xl ml-2 font-bold drop-shadow-[0_0_10px_rgba(56,189,248,0.5)]">1300</span></h3>
+                    <p class="text-xs text-slate-400 mt-1">Desliza para ver la emergencia y propagación del conocimiento.</p>
+                </div>
+                <div id="era-display" class="hidden md:block text-sm md:text-lg font-bold uppercase tracking-widest text-indigo-400 text-right">
+                    Precedentes y Baja Edad Media
+                </div>
+            </div>
+            <div class="relative w-full mt-4">
+                <input type="range" id="time-slider" min="1300" max="2050" value="1300" step="1">
+                <div class="flex justify-between text-xs text-slate-500 mt-3 font-mono px-2 font-semibold">
+                    <span>1300</span>
+                    <span>1450</span>
+                    <span>1600</span>
+                    <span>1750</span>
+                    <span>1900</span>
+                    <span>2050</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modal: Agregar Documento / Nodo -->
+    <div id="add-doc-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+        <div class="glass-panel w-full max-w-lg rounded-2xl p-6 max-h-[90vh] overflow-y-auto pr-4">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h2 class="text-xl font-bold text-white">Anexar documento / nodo</h2>
+                    <p class="text-xs text-slate-400 mt-1">Estos datos quedan solo en tu navegador (borrador local, sin invención): complétalos únicamente con lo que puedas verificar en tu fuente.</p>
+                </div>
+                <button id="close-add-doc" type="button" class="text-slate-400 hover:text-amber-400 transition bg-slate-800 p-1.5 rounded-full">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+            <form id="add-doc-form" class="space-y-3 text-sm">
+                <div>
+                    <label class="block text-slate-300 mb-1">Autor / Documento *</label>
+                    <input required id="doc-name" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500" placeholder="p. ej. Andrés Vélez Posada">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-300 mb-1">Año *</label>
+                        <input required id="doc-year" type="number" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500" placeholder="2020">
+                    </div>
+                    <div>
+                        <label class="block text-slate-300 mb-1">Tipo / Categoría *</label>
+                        <input required id="doc-type" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500" placeholder="p. ej. Artículo, Tesis, Autor">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-slate-300 mb-1">País / Lugar *</label>
+                    <input required id="doc-country" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500" placeholder="p. ej. Colombia (Medellín)">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-300 mb-1">Latitud</label>
+                        <input id="doc-lat" type="number" step="any" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500" placeholder="opcional">
+                    </div>
+                    <div>
+                        <label class="block text-slate-300 mb-1">Longitud</label>
+                        <input id="doc-lng" type="number" step="any" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500" placeholder="opcional">
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 -mt-2">Si no conoces las coordenadas, deja estos campos vacíos: el nodo aparecerá en la Red Conceptual pero no en el Mapamundi.</p>
+                <div>
+                    <label class="block text-slate-300 mb-1">Cita / descripción (fuente verificable) *</label>
+                    <textarea required id="doc-desc" rows="3" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500" placeholder="Fragmento breve con atribución"></textarea>
+                </div>
+                <div>
+                    <label class="block text-slate-300 mb-1">Conectar con nodos existentes</label>
+                    <select id="doc-connect" multiple size="5" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500"></select>
+                    <p class="text-xs text-slate-500 mt-1">Ctrl/Cmd + clic para seleccionar varios.</p>
+                </div>
+                <div>
+                    <label class="block text-slate-300 mb-1">Etiqueta de la relación</label>
+                    <input id="doc-relation-label" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-white focus:outline-none focus:border-amber-500" placeholder="p. ej. Relectura contemporánea del ingenio">
+                </div>
+                <div class="flex justify-between items-center pt-2">
+                    <div class="flex gap-3">
+                        <button type="button" id="export-user-docs" class="text-xs text-slate-400 hover:text-amber-400 underline">Exportar aportes (JSON)</button>
+                        <button type="button" id="clear-user-docs" class="text-xs text-slate-400 hover:text-red-400 underline">Borrar aportes locales</button>
+                    </div>
+                    <button type="submit" class="px-5 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium shadow-lg shadow-amber-500/30">
+                        Anexar nodo
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // DEEP RESEARCH JSON DATA (Nodos y Enlaces)
+        // ==========================================
+        
+        const nodesData = [
+            // --- ANTIGÜEDAD Y PRECEDENTES (Visibles siempre como bases) ---
+            { id: "vitruvio", name: "Vitruvio", lat: 41.9028, lng: 12.4964, year: 0, yearRange: [0, 1400], country: "Imperio Romano", type: "Precedente Clásico", desc: "Define la 'machinatio' en su tratado <em>De architectura</em>. Establece que la máquina no es un elemento natural, sino una invención (ingenium) humana, racional y geométrica, para superar las fuerzas de la naturaleza.", group: 1 },
+            { id: "agustin", name: "Agustín de Hipona", lat: 36.8667, lng: 7.7667, year: 400, yearRange: [400, 1350], country: "Imperio Romano (Numidia)", type: "Filosofía Teológica", desc: "Su concepción del ingenio está ligada a la memoria y la mente humana como reflejo divino. Sin embargo, advierte sobre la 'vana curiositas' (curiosidad vana), frenando parcialmente el desarrollo de la técnica profana durante siglos.", group: 1 },
+            
+            // --- SIGLO XIV - XV: RENACIMIENTO E INGEGNO ITALIANO ---
+            { id: "dondi", name: "Giovanni de Dondi", lat: 45.4064, lng: 11.8768, year: 1364, yearRange: [1350, 1450], country: "Italia (Padua)", type: "Mecánica Cosmológica", desc: "Diseña el <strong>Astrarium</strong> (1364). Es la primera gran materialización del 'ingegno' mecánico: un reloj cosmológico que replica analógicamente el movimiento de los planetas. Demuestra que la mente humana puede construir una 'machina mundi' (máquina del mundo).", group: 2 },
+            { id: "brunelleschi", name: "Filippo Brunelleschi", lat: 43.7696, lng: 11.2558, year: 1420, yearRange: [1410, 1470], country: "Italia (Florencia)", type: "Arquitectura / Ingeniería", desc: "Cúpula de Santa María del Fiore. El 'ingegno' pasa de ser pura teoría a la capacidad de resolver problemas materiales imposibles. Inventa grúas y polipastos (el castello), uniendo por primera vez la concepción intelectual geométrica con la praxis artesanal.", group: 2 },
+            { id: "alberti", name: "Leon Battista Alberti", lat: 43.7696, lng: 11.2560, year: 1450, yearRange: [1430, 1500], country: "Italia (Florencia)", type: "Teoría del Diseño", desc: "En <em>De Re Aedificatoria</em>, eleva el ingenio a facultad cognitiva suprema. Acuña el concepto de <strong>disegno</strong>: la preordinación racional en la mente antes de la ejecución de la materia.", group: 2 },
+            { id: "davinci", name: "Leonardo da Vinci", lat: 45.4642, lng: 9.1900, year: 1490, yearRange: [1470, 1540], country: "Italia / Francia", type: "Polimatía Natural", desc: "Encarna el 'ingegno natural'. Para Leonardo, la mente humana es un espejo de la naturaleza. Su ingenio disecciona y domina las fuerzas invisibles (peso, fuerza, movimiento, percusión) diseñando dispositivos que hibridan arte, anatomía y mecánica fluidodinámica.", group: 2 },
+
+            // --- SIGLO XVI - XVII: EL SIGLO DE ORO ESPAÑOL Y LA MATEMATIZACIÓN ---
+            { id: "tartaglia", name: "Niccolò Tartaglia", lat: 45.4384, lng: 12.3271, year: 1537, yearRange: [1520, 1580], country: "Italia (Venecia)", type: "Balística / Matemáticas", desc: "Aplica las matemáticas rigurosas a la guerra (<em>Nova Scientia</em>). El ingenio militar deja de ser empírico para calcular trayectorias de artillería, sentando bases para la cinemática moderna.", group: 2 },
+            { id: "galileo", name: "Galileo Galilei", lat: 43.7696, lng: 11.2558, year: 1610, yearRange: [1590, 1645], country: "Italia", type: "Física / Astronomía", desc: "Su 'Discorsi' (1638) fundó la física moderna. Demostró que el ingenio humano puede leer el 'libro de la naturaleza', que está escrito en caracteres matemáticos. Eliminó la diferencia entre mecánica celeste y terrestre.", group: 2 },
+            { id: "vives", name: "Juan Luis Vives", lat: 39.4699, lng: -0.3763, year: 1538, yearRange: [1520, 1575], country: "España (Valencia) / Países Bajos", type: "Filosofía Médica", desc: "<em>De anima et vita</em> (1538). Uno de los primeros en concebir el ingenium como proceso corporal y vivo: la mente se manifiesta a través del cuerpo, y su fuerza 'solo se revela y se pone en obra con el auxilio de instrumentos'. Esta interpretación médico-filosófica —ligada a la dieta, el estilo de vida y las funciones corporales— será apropiada silenciosamente por Juan Huarte de San Juan una generación después (Vélez Posada 2020).", group: 3, origin: "seed" },
+            { id: "turriano", name: "Juanelo Turriano", lat: 39.8628, lng: -4.0273, year: 1569, yearRange: [1540, 1600], country: "España (Toledo)", type: "Ingeniería de Infraestructura", desc: "Crea el 'Artificio de Toledo' para Felipe II. Una colosal red mecánica para elevar agua del Tajo al Alcázar. Consolida la figura del 'ingeniero' heroico como el domador definitivo de la geografía física de un imperio.", group: 3, origin: "seed" },
+            { id: "huarte", name: "Juan Huarte de San Juan", lat: 37.9942, lng: -3.4687, year: 1575, yearRange: [1560, 1630], country: "España", type: "Fisiología / Psicología", central: true, desc: "<em>Examen de ingenios para las ciencias</em> (1575 / 1594). Revoluciona el concepto: el ingenio no es un misterio del alma, sino que depende de la <strong>composición material y temperamental del cerebro</strong> (calor, humedad, sequedad). Es el primer tratado de psicología diferencial y orientación vocacional.<br/><br/><strong class=\"text-amber-300\">Lectura de Andrés Vélez Posada (EAFIT):</strong> según su relectura historiográfica (Vélez Posada 2015, 2020, 2021), el <em>Examen de ingenios</em> es la exploración filosófico-natural más completa del ingenium en la modernidad temprana. Para Huarte, 'ingenio' nombra una <strong>potencia generativa (potencia generativa)</strong> distribuida y común a animales, plantas, humanos, Dios y ángeles: la naturaleza humana tiende al engendramiento —por reproducción, nutrición, crecimiento, movimiento o sensación— tanto como por el pensamiento en las ciencias y las artes. El ingenio sigue así el flujo mismo del cuerpo (crecimiento, declive, digestión, generación de sangre, deseo sexual), retomando la vía corporal abierta por Vives. Esta lectura sitúa a Huarte no como una curiosidad aislada, sino como el punto donde convergen dos sentidos del ingenium señalados por Vélez Posada: como <em>causa</em> (facultad generativa) y como <em>efecto</em> (aplicación u obra), y abre además el debate político sobre la diversidad humana del ingenio en el contexto de la expansión ibérica.", group: 3, origin: "seed" },
+            { id: "cervantes", name: "Miguel de Cervantes", lat: 40.4168, lng: -3.7038, year: 1605, yearRange: [1590, 1650], country: "España", type: "Literatura", desc: "<em>El ingenioso hidalgo Don Quijote de la Mancha</em>. Muestra el lado patológico del 'ingenio caliente y seco' (según teorías de Huarte). El exceso de imaginación altera la percepción de la realidad material.", group: 3 },
+            { id: "gracian", name: "Baltasar Gracián", lat: 41.6488, lng: -0.8891, year: 1648, yearRange: [1630, 1690], country: "España", type: "Retórica / Conceptismo", desc: "<em>Agudeza y arte de ingenio</em>. El ingenio es un acto del entendimiento que exprime la correspondencia íntima entre objetos opuestos. Crea una red de 'conceptos' para revelar la estructura oculta del mundo.", group: 3 },
+
+            // --- SIGLO XVII: RACIONALISMO, EMPIRISMO Y MECANICISMO ---
+            { id: "bacon", name: "Francis Bacon", lat: 51.5074, lng: -0.1278, year: 1620, yearRange: [1600, 1660], country: "Inglaterra", type: "Empirismo Científico", desc: "El ingenio se sistematiza en un método. En el <em>Novum Organum</em>, postula que la invención no debe depender del genio azaroso, sino de un proceso inductivo riguroso para someter a la naturaleza (tecnología como poder).", group: 4 },
+            { id: "descartes", name: "René Descartes", lat: 48.8566, lng: 2.3522, year: 1637, yearRange: [1620, 1680], country: "Francia / Países Bajos", type: "Racionalismo / Mecanicismo", desc: "Somete la imaginación analógica (el antiguo ingenio) a la Razón analítica estricta (<em>Discurso del Método</em>). Concibe todo el universo biológico y físico como un inmenso mecanismo de relojería.", group: 4 },
+            { id: "pascal", name: "Blaise Pascal", lat: 45.7797, lng: 3.0863, year: 1642, yearRange: [1630, 1690], country: "Francia", type: "Matemáticas / Computación", desc: "Inventa la 'Pascalina'. Es el primer salto de externalización del intelecto humano: logra que una máquina física (engranajes) ejecute funciones cognitivas lógicas (suma y resta).", group: 4 },
+            { id: "leibniz", name: "Gottfried W. Leibniz", lat: 52.3759, lng: 9.7320, year: 1674, yearRange: [1660, 1720], country: "Alemania", type: "Heurística / Lógica", desc: "Desarrolla la calculadora escalonada (Stepped Reckoner) y teoriza el <strong>Ars Inveniendi</strong>. Propone que el ingenio resolutivo puede automatizarse si traducimos los conceptos a un alfabeto universal matemático (characteristica universalis).", group: 4 },
+
+            // --- SIGLO XVIII - XIX: HUMANISMO VS RAZÓN & REVOLUCIÓN INDUSTRIAL ---
+            { id: "vico", name: "Giambattista Vico", lat: 40.8518, lng: 14.2681, year: 1725, yearRange: [1710, 1760], country: "Italia", type: "Filosofía Humanista", desc: "En <em>Scienza Nuova</em>, se rebela contra Descartes. Defiende el 'ingenium' como la facultad de lo verosímil y poético. Es el ingenio (y no la lógica analítica) el que permite al ser humano crear instituciones, metáforas y construir la Historia.", group: 5 },
+            { id: "kant", name: "Immanuel Kant", lat: 54.7065, lng: 20.5110, year: 1790, yearRange: [1770, 1820], country: "Prusia (Alemania)", type: "Idealismo Estético", desc: "<em>Crítica del Juicio</em>. Establece una jerarquía fatal: el <strong>Genio</strong> es el don innato supremo para el Arte sublime. El <strong>Ingenio (Witz)</strong> queda relegado a un talento de asociación rápida, útil pero trivial.", group: 5 },
+            { id: "watt", name: "James Watt", lat: 55.8642, lng: -4.2518, year: 1776, yearRange: [1760, 1830], country: "Escocia (Reino Unido)", type: "Ingeniería Termodinámica", desc: "Perfecciona la máquina de vapor. El ingenio humano pasa de dominar la cinemática a dominar la termodinámica. Las máquinas dejan de depender del agua o el viento; generan su propio movimiento.", group: 6 },
+            { id: "babbage", name: "Charles Babbage", lat: 51.5074, lng: -0.1278, year: 1837, yearRange: [1820, 1880], country: "Inglaterra", type: "Ciencia de la Computación", desc: "Diseña la <strong>Máquina Analítica</strong>. Es el concepto fundacional de la computadora programable general. El ingenio mecánico se acerca al procesamiento abstracto de información (software primitivo).", group: 6 },
+            { id: "lovelace", name: "Ada Lovelace", lat: 51.5200, lng: -0.1500, year: 1843, yearRange: [1830, 1870], country: "Inglaterra", type: "Matemáticas / Algoritmia", desc: "Reconoce que la máquina de Babbage puede manipular símbolos, no solo números. Escribe el primer algoritmo. Su visión ('ciencia poética') fusiona la imaginación humana con el rigor mecánico.", group: 6 },
+            { id: "reuleaux", name: "Franz Reuleaux", lat: 52.5200, lng: 13.4050, year: 1875, yearRange: [1850, 1910], country: "Alemania", type: "Cinemática", desc: "<em>Cinemática Teórica</em>. Abstrae la máquina de su materialidad. Define la máquina como una 'cadena cinemática' que fuerza el movimiento de la naturaleza para realizar trabajo. Es la cima de la racionalidad industrial.", group: 6 },
+            { id: "kapp", name: "Ernst Kapp", lat: 52.2647, lng: 10.5263, year: 1877, yearRange: [1860, 1910], country: "Alemania", type: "Filosofía de la Técnica", desc: "Funda la filosofía de la técnica. Postula la <strong>Organprojektion</strong>: La tecnología es una proyección de los órganos humanos (el martillo es el puño, el telégrafo el sistema nervioso).", group: 6 },
+
+            // --- SIGLO XX: COMPUTACIÓN, CIBERNÉTICA Y CRÍTICA FILOSÓFICA ---
+            { id: "ortega", name: "José Ortega y Gasset", lat: 40.4168, lng: -3.7038, year: 1933, yearRange: [1910, 1955], country: "España", type: "Fenomenología", desc: "<em>Meditación de la Técnica</em>. El ser humano usa el ingenio para crear una 'sobrenaturaleza'. Advierte sobre el 'hombre masa', que usa la tecnología como magia sin comprender el colosal esfuerzo inventivo que la sostiene.", group: 7 },
+            { id: "turing", name: "Alan Turing", lat: 51.9975, lng: -0.7405, year: 1936, yearRange: [1930, 1960], country: "Reino Unido", type: "Computación / Lógica", desc: "La 'Máquina de Turing' universaliza el ingenio resolutivo. Demuestra que cualquier proceso deductivo puede ser algoritmizado, separando definitivamente el hardware del software.", group: 7 },
+            { id: "wiener", name: "Norbert Wiener", lat: 42.3601, lng: -71.0942, year: 1948, yearRange: [1940, 1980], country: "Estados Unidos", type: "Cibernética", desc: "Introduce la <strong>Cibernética</strong> y el 'feedback'. Las máquinas dejan de ser rígidas para volverse homeostáticas y regulativas. Las máquinas ahora actúan con 'propósito' imitando sistemas biológicos.", group: 7 },
+            { id: "heidegger", name: "Martin Heidegger", lat: 47.9990, lng: 7.8421, year: 1953, yearRange: [1930, 1970], country: "Alemania", type: "Ontología", desc: "<em>La pregunta por la técnica</em>. Critica el 'Gestell' (la Estructura de Emplazamiento). La técnica moderna ya no revela el mundo poéticamente, sino que reduce toda la naturaleza (incluyendo humanos) a meras 'existencias' o recursos explotables.", group: 7 },
+            { id: "simondon", name: "Gilbert Simondon", lat: 48.8566, lng: 2.3522, year: 1958, yearRange: [1950, 1990], country: "Francia", type: "Filosofía de la Técnica", desc: "Critica que tratemos a las máquinas como esclavas. Define la 'concreción técnica', donde el objeto tecnológico evoluciona hacia una forma casi orgánica (medio asociado). Aboga por una cultura técnica profunda.", group: 7 },
+
+            // --- SIGLO XXI: INTELIGENCIA ARTIFICIAL Y COSMOTÉCNICA ---
+            { id: "silicon", name: "Redes Neuronales / IA", lat: 37.3875, lng: -122.0575, year: 2012, yearRange: [1990, 2050], country: "Global (Silicon Valley)", type: "Machine Learning", desc: "El ingenio se descentraliza en cajas negras de aprendizaje profundo (Deep Learning). Pasamos de la instrucción explícita a la inferencia estadística a escala planetaria. La 'agudeza' es ahora reconocimiento algorítmico de patrones masivos.", group: 8 },
+            { id: "hui", name: "Yuk Hui", lat: 22.3193, lng: 114.1694, year: 2016, yearRange: [2010, 2050], country: "Hong Kong / Global", type: "Cosmotécnica", desc: "Formula el concepto de <strong>Cosmotécnica</strong>. Denuncia la visión monocultural de la tecnología occidental. Propone redescubrir las múltiples historias locales del ingenio (tecnodiversidad) para escapar del monopolio tecnológico global.", group: 8 },
+
+            // --- AMPLIACIÓN: COSMOLOGÍA Y FISIOLOGÍA DEL INGENIUM (Vélez Posada, "Genius, as ingenium", Springer 2020, pp. 2-5) ---
+            { id: "ficino", name: "Marsilio Ficino", lat: 43.7696, lng: 11.2558, year: 1489, yearRange: [1470, 1540], country: "Italia (Florencia)", type: "Filosofía Natural / Medicina", desc: "<em>De vita libri tres</em> (1489). Al preguntarse si la melancolía de los eruditos y artesanos dedicados ('ingeniosi') era un temperamento físico o una enfermedad, formula tempranamente la vía médico-fisiológica del ingenium que Vives y Huarte retomarán y profundizarán una generación después.", group: 11 },
+            { id: "luther", name: "Martín Lutero", lat: 51.8666, lng: 12.6528, year: 1531, yearRange: [1520, 1560], country: "Alemania (Wittenberg)", type: "Teología / Fisiología del Ingenio", desc: "En sus <em>Tischreden</em> (1531-1546) usa la explicación fisiológica del ingenium para narrar su propia práctica: \"no tengo mejor remedio que la ira. Si quiero escribir, orar o predicar, debo enojarme; entonces toda mi sangre se renueva, mi ingenio se agudiza (<em>acuitur ingenium</em>) y todos los ataques contra mí ceden\" (2410b). Apropiación religiosa de la misma vía corporal abierta por Vives.", group: 11 },
+            { id: "bruno", name: "Giordano Bruno", lat: 51.5074, lng: -0.1278, year: 1584, yearRange: [1580, 1610], country: "Italia / Inglaterra (itinerante)", type: "Filosofía Natural / Cosmología", desc: "Generaliza el ingenium con una fórmula radical: la <strong>'vis ingenita'</strong>, el poder innato que posee todo ser (Canone 2006). Extiende la potencia generativa distribuida que Huarte reconoce en humanos, animales y plantas a la totalidad del cosmos.", group: 11 },
+            { id: "persio", name: "Antonio Persio", lat: 45.4408, lng: 12.3155, year: 1576, yearRange: [1570, 1600], country: "Italia", type: "Filosofía Natural / Cosmología", desc: "<em>Trattato dell'ingegno dell'huomo</em> (1576). Retomando los comentarios de Ficino sobre Platón y a su maestro Bernardino Telesio, construye una imagen cosmológica del ingenio: el cosmos es un espíritu vivo, y cada parte del universo es un 'picciol mondo' dotado de ingenio propio.", group: 11 },
+            { id: "munster", name: "Sebastian Münster", lat: 47.5596, lng: 7.5886, year: 1550, yearRange: [1545, 1600], country: "Suiza (Basilea)", type: "Cosmografía / Geografía", desc: "<em>Cosmographia Universalis</em> (1550). Acuña la expresión <strong>'terrae ingenia'</strong>: reformula la idea del genius loci dándole una dimensión física sustantiva. El ingenio deja de ser exclusivo de lo humano para nombrar también las propiedades de tierras y regiones — el encuentro entre agencia humana y agencia ambiental.", group: 11 },
+
+            // --- AMPLIACIÓN: CULTURA VISUAL Y RETÓRICA DEL INGENIO ---
+            { id: "vasari", name: "Giorgio Vasari", lat: 43.7696, lng: 11.2558, year: 1550, yearRange: [1540, 1580], country: "Italia (Florencia)", type: "Historia del Arte / Teoría del Diseño", desc: "<em>Le Vite</em> (1550). Usa 'ingegno' para nombrar la excepcionalidad y vivacidad de espíritu, la fuerza de carácter y el talento particular en acción del <em>artefice del disegno</em>. Continuación directa del disegno racional de Alberti como categoría crítica del arte.", group: 12 },
+            { id: "ripa", name: "Cesare Ripa", lat: 45.4064, lng: 11.8768, year: 1625, yearRange: [1600, 1650], country: "Italia (Padua)", type: "Iconología / Cultura Emblemática", desc: "<em>Della novissima iconologia</em> (1625). En una de las personificaciones emblemáticas más influyentes del ingegno, lo representa como un joven arquero de alas iridiscentes que apunta con arco y flecha: la fuerza y agudeza penetrante del ingenio humano para investigar lo celeste, lo terrestre y lo subterráneo.", group: 12 },
+            { id: "tesauro", name: "Emanuele Tesauro", lat: 45.0703, lng: 7.6869, year: 1654, yearRange: [1640, 1690], country: "Italia (Turín)", type: "Retórica / Filosofía Moral", desc: "<em>Il cannocchiale aristotelico</em> (1654). La capacidad cognitiva de ver lo común en la diversidad al construir metáforas y crear símbolos y 'concetti' es, para Tesauro, la señal reveladora del espíritu ingenioso. Continúa la línea retórica que Descartes había orientado hacia la verdad, y que Vico recibirá una generación después.", group: 12 },
+
+            // --- AMPLIACIÓN: POLÍTICA DE LA DIVERSIDAD HUMANA (Genius as ingenium, pp. 6-7) ---
+            { id: "garces", name: "Julián Garcés", lat: 19.3139, lng: -98.2404, year: 1537, yearRange: [1530, 1545], country: "Nueva España (Tlaxcala) / Roma", type: "Teología / Política de la Diversidad Humana", desc: "Obispo dominico de Tlaxcala. En 1537 escribe una carta apologética al papa Paulo III describiendo el 'vigor de espíritu', la 'viveza de entendimiento', el 'buen natural' y, en suma, 'la claridad, presteza y facilidad de ingenios' de los habitantes de Tlaxcala (García 1907). La carta tiene un impacto político casi inmediato.", group: 13 },
+            { id: "sublimis_deus", name: "Bula Sublimis Deus", lat: 41.9029, lng: 12.4534, year: 1537, yearRange: [1537, 1560], country: "Roma (Estados Pontificios)", type: "Documento Pontificio", desc: "Pocos meses después de la carta de Julián Garcés, el papa Paulo III emite esta bula reconociendo la racionalidad de la población amerindia y condenando su esclavización y despojo. Antecedente directo de Las Nuevas Leyes (1542). El ingenio deja aquí de ser solo una categoría filosófica: se vuelve argumento jurídico y político.", group: 13 },
+            { id: "lascasas", name: "Bartolomé de Las Casas", lat: 41.6523, lng: -4.7245, year: 1550, yearRange: [1537, 1566], country: "España (Valladolid) / Indias", type: "Teología / Defensa de los Pueblos Indígenas", desc: "Uno de los defensores europeos más conocidos de la libertad y 'facilidad de ingenios' de los pueblos amerindios (Pagden 1982). Entre 1550 y 1580, cientos de indígenas esclavizados y reubicados en Castilla litigaron su libertad alegando ser libres 'de su nacimiento', por su 'naturaleza' y <strong>por su ingenio</strong> (Van Deusen 2015) — la instanciación jurídica más concreta de la politización del concepto.", group: 13 },
+
+            // --- AMPLIACIÓN: METODOLOGÍA DEL DISEÑO EN INGENIERÍA (puente ingenio → ingeniería contemporánea) ---
+            { id: "simon", name: "Herbert A. Simon", lat: 40.4406, lng: -79.9959, year: 1969, yearRange: [1955, 2000], country: "Estados Unidos (Pittsburgh)", type: "Ciencias del Diseño / Racionalidad Limitada", desc: "<em>The Sciences of the Artificial</em> (1969). Formula el diseño como disciplina rigurosa y enseñable: el ingenio inventivo se vuelve un proceso de búsqueda en espacios de problemas mal definidos, resoluble con racionalidad limitada ('bounded rationality'). Puente directo entre la filosofía del ingenium y la ingeniería y las ciencias de la computación contemporáneas.", group: 14 },
+            { id: "altshuller", name: "Genrich Altshuller", lat: 40.4093, lng: 49.8671, year: 1956, yearRange: [1946, 1985], country: "URSS (Bakú)", type: "Ingeniería de Sistemas / Inventiva Sistemática", desc: "Desarrolla la <strong>TRIZ</strong> (Teoría para la Resolución de Problemas Inventivos) a partir del análisis sistemático de miles de patentes. Sostiene que el acto inventivo — el ingenio, en su sentido más tradicionalmente misterioso — sigue patrones repetibles y enseñables, no el azar del genio individual.", group: 14 },
+            { id: "rittel_webber", name: "Horst Rittel & Melvin Webber", lat: 37.8715, lng: -122.2730, year: 1973, yearRange: [1965, 1990], country: "Estados Unidos (Berkeley)", type: "Teoría de la Planificación / Diseño", desc: "'Dilemmas in a General Theory of Planning' (1973). Acuñan los <strong>'wicked problems'</strong> (problemas perversos): a diferencia de los problemas bien estructurados de la ingeniería clásica, los problemas sociales y de diseño carecen de formulación definitiva, de criterio de solución correcta y de condición de 'terminado'. Cuestionan el alcance real del ingenio racionalista de Simon.", group: 14 },
+            { id: "schon", name: "Donald Schön", lat: 42.3601, lng: -71.0942, year: 1983, yearRange: [1973, 2010], country: "Estados Unidos (Cambridge, MA)", type: "Epistemología de la Práctica", desc: "<em>The Reflective Practitioner</em> (1983). Frente al diseño como resolución racional de problemas bien definidos, describe al 'reflective practitioner': un ingenio hecho de conocimiento tácito, improvisación situada y diálogo con los 'materiales' del problema en tiempo real — la contraparte epistemológica de los problemas perversos de Rittel y Webber.", group: 14 },
+
+            // --- INTERPRETACIÓN HISTORIOGRÁFICA CONTEMPORÁNEA (el lente que centra este mapa) ---
+            { id: "velez_posada", name: "Andrés Vélez Posada", lat: 6.2442, lng: -75.5812, year: 2020, yearRange: [2015, 2050], country: "Colombia (Medellín) — Universidad EAFIT", type: "Historiografía Filosófica Contemporánea", desc: "En <em>'Genius, as ingenium'</em> (Encyclopedia of Early Modern Philosophy and the Sciences, Springer, 2020) y en sus estudios previos y posteriores (Vélez Posada 2015, 2021), relee el <em>Examen de ingenios</em> de Huarte como la exploración filosófico-natural más completa del ingenium en la modernidad temprana. Su lente teórico propone que el ingenium moderno temprano fue: (1) una <strong>potencia generativa corporeizada</strong>, compartida por humanos, animales, plantas y la naturaleza misma; (2) una noción de doble filo, entendida a la vez como <em>causa</em> (facultad inventiva) y como <em>efecto</em> (obra, instrumento, artefacto); y (3) un fenómeno socialmente distribuido y político, movilizado tanto para jerarquizar como para defender la racionalidad y la libertad de poblaciones diversas (por ejemplo, en los debates sobre los indígenas americanos). Bajo este lente, Huarte deja de ser un caso aislado y se convierte en el nodo donde convergen Vives, la tradición retórica y las disputas modernas sobre técnica, cuerpo y diversidad humana.", group: 9, origin: "seed" }
+        ];
+
+        const linksData = [
+            // Continuidades directas y Fundaciones
+            { source: "vitruvio", target: "alberti", label: "Recuperación de la proporción clásica" },
+            { source: "dondi", target: "brunelleschi", label: "Práctica mecánica hereda a la construcción" },
+            { source: "brunelleschi", target: "alberti", label: "De la praxis empírica a la teoría del diseño" },
+            { source: "alberti", target: "davinci", label: "Del diseño racional a la investigación natural" },
+            { source: "tartaglia", target: "galileo", label: "Cálculo balístico sienta bases cinemáticas" }, // (Galileo implied/grouped with Renaissance mechanics)
+            
+            // Fisiología y Lenguaje (España)
+            { source: "vives", target: "huarte", label: "Concepción corporal del ingenium es apropiada por Huarte" },
+            { source: "huarte", target: "cervantes", label: "Teoría temperamental inspira a Don Quijote" },
+            { source: "huarte", target: "gracian", label: "Fisiología cerebral muta a agudeza retórica" },
+            { source: "turriano", target: "bacon", label: "El dominio geográfico inspira la meta del empirismo" },
+            
+            // Computación y Razón (Eje Franco-Alemán-Británico)
+            { source: "bacon", target: "descartes", label: "El método se vuelve matemático-deductivo" },
+            { source: "descartes", target: "pascal", label: "Mecanización del cuerpo inspira calculadoras" },
+            { source: "pascal", target: "leibniz", label: "Expansión del cálculo mecánico" },
+            { source: "leibniz", target: "babbage", label: "Ars inveniendi conceptualiza el hardware general" },
+            { source: "babbage", target: "lovelace", label: "Hardware inspira el primer Software/Algoritmo" },
+            { source: "leibniz", target: "turing", label: "Matematización lógica llevada al cómputo universal" },
+            
+            // Revoluciones Industriales (Materialidad)
+            { source: "watt", target: "reuleaux", label: "Motor a vapor requiere nueva cinemática teórica" },
+            { source: "reuleaux", target: "kapp", label: "Análisis mecánico inspira antropología (Organprojektion)" },
+            
+            // Siglo XX: Control, Redes y Crítica
+            { source: "turing", target: "wiener", label: "El cómputo evoluciona a sistemas de control (Cibernética)" },
+            { source: "wiener", target: "silicon", label: "Feedback sienta bases para Redes Neuronales" },
+            { source: "kapp", target: "simondon", label: "Proyección orgánica evoluciona a Medio Asociado" },
+            
+            // Oposiciones y Fracturas Conceptuales (Ramas críticas)
+            { source: "agustin", target: "bacon", label: "Oposición: Empirismo rechaza el límite de la vana curiositas" },
+            { source: "descartes", target: "vico", label: "Oposición: Vico defiende el ingenio poético contra la Razón" },
+            { source: "descartes", target: "kant", label: "Reestructuración: Kant separa Razón de Ingenio/Genio" },
+            { source: "bacon", target: "heidegger", label: "Crítica: Heidegger denuncia el dominio natural como 'Gestell'" },
+            { source: "descartes", target: "ortega", label: "Crítica al utilitarismo mecanicista extremo" },
+            { source: "silicon", target: "hui", label: "Respuesta: Cosmotécnica contra el monopolio algorítmico" },
+
+            // Ampliación: Cosmología y fisiología del ingenium
+            { source: "ficino", target: "vives", label: "Precedente médico-filosófico: la melancolía de los ingeniosi antecede la vía corporal del ingenium" },
+            { source: "vives", target: "luther", label: "Apropiación religiosa de la fisiología del ingenium" },
+            { source: "huarte", target: "bruno", label: "Generalización cosmológica: la 'vis ingenita' extiende la potencia generativa a todo ser" },
+            { source: "ficino", target: "persio", label: "Comentarios sobre Platón heredados por el tratado cosmológico del ingegno" },
+            { source: "bruno", target: "persio", label: "Elaboración cosmológica paralela: el ingenio como espíritu vivo del cosmos" },
+            { source: "persio", target: "munster", label: "Extensión del ingenium más allá de lo humano: del cosmos a la tierra y las regiones" },
+
+            // Ampliación: Cultura visual y retórica del ingenio
+            { source: "alberti", target: "vasari", label: "El disegno racional se vuelve categoría crítica del ingegno artístico" },
+            { source: "huarte", target: "ripa", label: "Cultura visual y emblemática paralela: la agudeza se hace imagen" },
+            { source: "ripa", target: "gracian", label: "La emblemática de la agudeza precede a la teoría conceptista del ingenio" },
+            { source: "descartes", target: "tesauro", label: "La orientación racional del ingenium convive con su elaboración retórica en los concetti" },
+            { source: "tesauro", target: "vico", label: "Vico recibe la tradición retórica del ingenio como facultad de ver lo común en lo diverso" },
+            { source: "gracian", target: "tesauro", label: "Tradición conceptista compartida: agudeza y concetti" },
+
+            // Ampliación: Política de la diversidad humana
+            { source: "huarte", target: "garces", label: "El ingenio como facultad común y distribuida se moviliza en el debate sobre la diversidad humana" },
+            { source: "garces", target: "sublimis_deus", label: "La carta apologética impulsa el reconocimiento pontificio de la racionalidad amerindia" },
+            { source: "sublimis_deus", target: "lascasas", label: "Sienta el terreno jurídico para la defensa de la libertad y el ingenio de los pueblos americanos" },
+
+            // Ampliación: Metodología del diseño en ingeniería (puente ingenio → ingeniería contemporánea)
+            { source: "wiener", target: "simon", label: "La cibernética y el procesamiento de información inspiran la 'ciencia de lo artificial'" },
+            { source: "reuleaux", target: "altshuller", label: "De la cinemática de máquinas a la sistematización del propio acto inventivo (TRIZ)" },
+            { source: "altshuller", target: "simon", label: "Paralelismo en Guerra Fría: sistematizar el ingenio inventivo, en la URSS y en EE. UU." },
+            { source: "simon", target: "rittel_webber", label: "Crítica: los problemas de planificación social no son 'bien estructurados' como supone la ciencia del diseño" },
+            { source: "rittel_webber", target: "schon", label: "Los problemas perversos fundamentan la epistemología de la práctica reflexiva" },
+            { source: "simon", target: "silicon", label: "La ciencia de lo artificial anticipa la IA como diseño computacional del ingenio" },
+
+            // Relectura historiográfica contemporánea (el lente que centra el mapa)
+            { source: "huarte", target: "velez_posada", label: "Relectura contemporánea: ingenio como potencia generativa corporeizada y distribuida" }
+        ];
+
+        // Preparar las referencias estructuradas de los enlaces para el globo (ThreeJS arcs)
+        // Es mutable (let) porque los enlaces aportados por el usuario o cargados desde la API
+        // del sistema INGENIUM se reconstruyen en caliente vía rebuildGlobeLinks().
+        let globeLinksData = [];
+        function rebuildGlobeLinks() {
+            globeLinksData = linksData.map(link => ({
+                ...link,
+                sourceNode: nodesData.find(n => n.id === link.source),
+                targetNode: nodesData.find(n => n.id === link.target)
+            })).filter(l => l.sourceNode && l.targetNode); // Asegurar integridad
+        }
+        rebuildGlobeLinks();
+
+        // Paleta de colores por grupo/tradición (consistente entre Mapamundi y Red Conceptual)
+        const GROUP_COLORS = {
+            1: '#94a3b8', 2: '#38bdf8', 3: '#f472b6', 4: '#a78bfa',
+            5: '#fb923c', 6: '#4ade80', 7: '#f87171', 8: '#22d3ee',
+            9: '#facc15', 10: '#22c55e',
+            11: '#2dd4bf', // Cosmología y fisiología del ingenium
+            12: '#fb7185', // Cultura visual y retórica
+            13: '#e879f9', // Política de la diversidad humana
+            14: '#60a5fa'  // Metodología del diseño en ingeniería (puente a la ingeniería contemporánea)
+        };
+        function colorForNode(d) {
+            if (d.central) return '#f59e0b'; // Ámbar: nodo central (Juan Huarte de San Juan)
+            return GROUP_COLORS[d.group] || '#64748b';
+        }
+
+        // ==========================================
+        // ESTADO DE LA APLICACIÓN
+        // ==========================================
+        const state = {
+            view: 'globe', // 'globe' or 'graph'
+            currentYear: 1300,
+            activeNodes: [],    // Nodos en su peak histórico (pulsan)
+            legacyNodes: [],    // Nodos que ya ocurrieron (visibles, sin pulso)
+            activeLinks: [],    // Enlaces de la época
+            graphInitialized: false
+        };
+
+        const ui = {
+            btnGlobe: document.getElementById('btn-globe'),
+            btnGraph: document.getElementById('btn-graph'),
+            btnAddDoc: document.getElementById('btn-add-doc'),
+            globeContainer: document.getElementById('globe-container'),
+            graphContainer: document.getElementById('graph-container'),
+            timelineContainer: document.getElementById('timeline-container'),
+            timeSlider: document.getElementById('time-slider'),
+            yearDisplay: document.getElementById('year-display'),
+            eraDisplay: document.getElementById('era-display'),
+            infoPanel: document.getElementById('info-panel'),
+            infoTitle: document.getElementById('info-title'),
+            infoType: document.getElementById('info-type'),
+            infoCountry: document.getElementById('info-country'),
+            infoYear: document.getElementById('info-year'),
+            infoOrigin: document.getElementById('info-origin'),
+            infoDesc: document.getElementById('info-desc'),
+            closeInfo: document.getElementById('close-info'),
+            addDocModal: document.getElementById('add-doc-modal'),
+            closeAddDoc: document.getElementById('close-add-doc'),
+            addDocForm: document.getElementById('add-doc-form'),
+            docConnect: document.getElementById('doc-connect'),
+            exportUserDocs: document.getElementById('export-user-docs'),
+            clearUserDocs: document.getElementById('clear-user-docs')
+        };
+        
+        let world, graph, currentGraphData = null;
+
+        function initGlobe() {
+            world = Globe()(ui.globeContainer)
+                .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+                .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+                .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+                .pointOfView({ lat: 38, lng: -3.5, altitude: 1.6 }) // Foco inicial cerca de Baeza (Juan Huarte de San Juan), el centro de este mapa
+                
+                // Configuración de Puntos Fijos (Marcadores de lugares reales)
+                .pointLat('lat')
+                .pointLng('lng')
+                .pointAltitude(d => d.central ? 0.14 : (state.activeNodes.some(n => n.id === d.id) ? 0.08 : 0.02))
+                .pointRadius(d => d.central ? 1.8 : (state.activeNodes.some(n => n.id === d.id) ? 1.2 : 0.4))
+                .pointColor(d => d.central ? '#f59e0b' : (state.activeNodes.some(n => n.id === d.id) ? '#38bdf8' : 'rgba(100, 116, 139, 0.6)'))
+                .pointResolution(32)
+                .pointLabel(d => `<div class="scene-tooltip"><strong class="text-sky-300">${d.name}</strong><br/>${d.type} (${d.year > 0 ? d.year : 'Antigüedad'})</div>`)
+                .onPointClick(node => showInfoPanel(node))
+                
+                // Mapas de Calor Pulsantes (Rings) SOLO para nodos activos en la época
+                .ringLat('lat')
+                .ringLng('lng')
+                .ringColor(() => t => `rgba(56, 189, 248, ${Math.max(0, 1-t)})`)
+                .ringMaxRadius(5)
+                .ringPropagationSpeed(3)
+                .ringRepeatPeriod(900)
+                
+                // Rutas del Conocimiento (Arcs)
+                .arcStartLat(d => d.sourceNode.lat)
+                .arcStartLng(d => d.sourceNode.lng)
+                .arcEndLat(d => d.targetNode.lat)
+                .arcEndLng(d => d.targetNode.lng)
+                .arcColor(() => ['#818cf8', '#c084fc']) // Gradiente de transferencia
+                .arcDashLength(0.5)
+                .arcDashGap(0.2)
+                .arcDashAnimateTime(2500)
+                .arcAltitudeAutoScale(0.3)
+                .arcLabel(d => `<div class="scene-tooltip border-indigo-400"><strong>Transición de ideas:</strong><br/>${d.label}</div>`);
+            
+            // Custom atmospheric glow via three.js
+            const globeMaterial = world.globeMaterial();
+            globeMaterial.color = new THREE.Color(0x1a237e); // Tinte azul oscuro
+            globeMaterial.emissive = new THREE.Color(0x020617);
+            globeMaterial.emissiveIntensity = 0.3;
+            globeMaterial.shininess = 0.8;
+            
+            // Auto rotación suave
+            world.controls().autoRotate = true;
+            world.controls().autoRotateSpeed = 0.4;
+            // Detener rotación al interactuar
+            world.controls().addEventListener('start', () => { world.controls().autoRotate = false; });
+        }
+
+        function initGraph() {
+            // Evitar doble inicialización
+            if (state.graphInitialized) return;
+            
+            // Usar estructuras puras de datos para evitar conflictos circulares de memoria.
+            // Se conserva la referencia en currentGraphData para poder anexar nodos/enlaces
+            // en caliente (botón "Agregar Documento") sin perder la posición ya calculada
+            // de los nodos existentes.
+            currentGraphData = {
+                nodes: JSON.parse(JSON.stringify(nodesData)),
+                links: JSON.parse(JSON.stringify(linksData))
+            };
+
+            // Juan Huarte de San Juan es el centro conceptual de este mapa: se fija en el
+            // origen (0,0,0) para que la simulación de fuerzas organice el resto de la red
+            // — precedentes, contemporáneos y la relectura de Andrés Vélez Posada— a su alrededor.
+            const centralNode = currentGraphData.nodes.find(n => n.central);
+            if (centralNode) {
+                centralNode.fx = 0; centralNode.fy = 0; centralNode.fz = 0;
+            }
+
+            graph = ForceGraph3D()(ui.graphContainer)
+                .graphData(currentGraphData)
+                .backgroundColor('rgba(2, 6, 23, 0)') // Transparente para no superponer si hubiera bugs, manejado por CSS
+                .nodeLabel(d => `<div class="scene-tooltip"><strong class="text-sky-300">${d.name}</strong><br/><span class="text-xs text-slate-300">${d.type}</span></div>`)
+                // Coloreado por grupo/tradición, con el nodo central (Huarte) resaltado en ámbar
+                .nodeColor(colorForNode)
+                // Tamaño basado en cantidad de enlaces (centralidad básica) + refuerzo para el nodo central
+                .nodeVal(d => {
+                    const linksCount = linksData.filter(l => l.source === d.id || l.target === d.id).length;
+                    return (d.central ? 14 : 2) + (linksCount * 1.5);
+                })
+                // Partículas direccionales simulando flujo de ideas
+                .linkDirectionalArrowLength(4.5)
+                .linkDirectionalArrowRelPos(1)
+                .linkDirectionalParticles(d => Math.floor(Math.random() * 2) + 1)
+                .linkDirectionalParticleSpeed(0.005)
+                .linkDirectionalParticleWidth(1.5)
+                .linkColor(() => 'rgba(148, 163, 184, 0.3)') // Slate-400 translúcido
+                .linkOpacity(0.5)
+                // Interacción de cámara
+                .onNodeClick(node => {
+                    // Mover cámara al nodo
+                    const distance = 80;
+                    const distRatio = 1 + distance/Math.hypot(node.x, node.y, node.z);
+                    graph.cameraPosition(
+                        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, 
+                        node, 
+                        2500 // ms transition
+                    );
+                    showInfoPanel(node);
+                })
+                .onBackgroundClick(() => {
+                    hideInfoPanel();
+                });
+            
+            state.graphInitialized = true;
+
+            // Enfocar la cámara en el nodo central (Huarte) al entrar por primera vez a la Red Conceptual
+            if (centralNode) {
+                setTimeout(() => {
+                    graph.cameraPosition({ x: 0, y: 0, z: 220 }, { x: 0, y: 0, z: 0 }, 1500);
+                }, 400);
+            }
+        }
+
+        // Refresca la Red Conceptual sin perder la posición de los nodos ya existentes
+        // (mutación in-place + reinvocación de graphData, patrón recomendado por 3d-force-graph)
+        function refreshGraphData() {
+            if (!state.graphInitialized || !currentGraphData) return;
+            graph.graphData(currentGraphData);
+            graph.d3ReheatSimulation();
+        }
+
+        function updateDataByYear() {
+            const year = state.currentYear;
+            
+            // Lógica de visualización histórica:
+            // 1. Activos (Presente del slider): El año está dentro del rango del nodo. (Rings + Color Brillante)
+            state.activeNodes = nodesData.filter(d => year >= d.yearRange[0] && year <= d.yearRange[1]);
+            
+            // 2. Legado (Pasado del slider): El nodo ya ocurrió, su época pasó. (Punto tenue, sin Rings)
+            state.legacyNodes = nodesData.filter(d => year > d.yearRange[1]);
+            
+            // Nodos visibles = Activos + Legado (los futuros no se renderizan)
+            const visibleNodes = [...state.activeNodes, ...state.legacyNodes];
+            const visibleIds = new Set(visibleNodes.map(d => d.id));
+            
+            // Enlaces visibles: Surgen cuando ambos nodos involucrados ya han "aparecido" en la historia
+            state.activeLinks = globeLinksData.filter(l => visibleIds.has(l.source) && visibleIds.has(l.target));
+
+            // Actualizar Globo (Si estamos en esa vista o para background processing)
+            if (world) {
+                // El Mapamundi solo puede dibujar nodos con coordenadas reales; los documentos
+                // anexados sin lat/lng siguen visibles en la Red Conceptual pero no aquí.
+                const geolocatedNodes = visibleNodes.filter(d => typeof d.lat === 'number' && typeof d.lng === 'number');
+                // Actualizar puntos y forzar redibujado de estilos vía callbacks
+                world.pointsData(geolocatedNodes);
+                // Heatmaps (anillos) solo para los actores activos de la época
+                world.ringsData(state.activeNodes.filter(d => typeof d.lat === 'number' && typeof d.lng === 'number'));
+                // Mostrar flujo de ideas históricas
+                world.arcsData(state.activeLinks);
+            }
+        }
+
+        function getEra(year) {
+            if (year < 1350) return "Precedentes Clásicos";
+            if (year < 1550) return "Renacimiento Italiano (Ingegno)";
+            if (year < 1700) return "Siglo de Oro Español & Racionalismo";
+            if (year < 1850) return "Ilustración y Revolución Industrial";
+            if (year < 1940) return "Máquinas Analíticas y Termodinámica";
+            if (year < 1990) return "Cibernética y Computación Moderna";
+            return "Era de la IA y Cosmotécnica";
+        }
+
+        function switchView(viewName) {
+            state.view = viewName;
+            hideInfoPanel();
+
+            if (viewName === 'globe') {
+                // UI Buttons styling
+                ui.btnGlobe.classList.replace('bg-slate-800', 'bg-sky-600');
+                ui.btnGlobe.classList.replace('text-slate-300', 'text-white');
+                ui.btnGlobe.classList.replace('hover:bg-slate-700', 'hover:bg-sky-500');
+                ui.btnGlobe.classList.add('shadow-lg', 'shadow-sky-500/30', 'border-transparent');
+                ui.btnGlobe.classList.remove('border', 'border-slate-700');
+
+                ui.btnGraph.classList.replace('bg-sky-600', 'bg-slate-800');
+                ui.btnGraph.classList.replace('text-white', 'text-slate-300');
+                ui.btnGraph.classList.replace('hover:bg-sky-500', 'hover:bg-slate-700');
+                ui.btnGraph.classList.remove('shadow-lg', 'shadow-sky-500/30', 'border-transparent');
+                ui.btnGraph.classList.add('border', 'border-slate-700');
+                
+                // Swap layers visibility
+                ui.globeContainer.style.zIndex = '5';
+                ui.graphContainer.style.zIndex = '1';
+                ui.globeContainer.style.opacity = '1';
+                ui.graphContainer.style.pointerEvents = 'auto';
+                ui.graphContainer.style.opacity = '0';
+                ui.graphContainer.style.pointerEvents = 'none';
+                
+                ui.timelineContainer.style.opacity = '1';
+                ui.timelineContainer.style.pointerEvents = 'auto';
+                
+                if (world) {
+                    world.controls().autoRotate = true;
+                }
+                
+            } else { // GRAPH VIEW
+                // UI Buttons styling
+                ui.btnGraph.classList.replace('bg-slate-800', 'bg-sky-600');
+                ui.btnGraph.classList.replace('text-slate-300', 'text-white');
+                ui.btnGraph.classList.replace('hover:bg-slate-700', 'hover:bg-sky-500');
+                ui.btnGraph.classList.add('shadow-lg', 'shadow-sky-500/30', 'border-transparent');
+                ui.btnGraph.classList.remove('border', 'border-slate-700');
+
+                ui.btnGlobe.classList.replace('bg-sky-600', 'bg-slate-800');
+                ui.btnGlobe.classList.replace('text-white', 'text-slate-300');
+                ui.btnGlobe.classList.replace('hover:bg-sky-500', 'hover:bg-slate-700');
+                ui.btnGlobe.classList.remove('shadow-lg', 'shadow-sky-500/30', 'border-transparent');
+                ui.btnGlobe.classList.add('border', 'border-slate-700');
+                
+                // Swap layers visibility
+                ui.graphContainer.style.zIndex = '5';
+                ui.globeContainer.style.zIndex = '1';
+                ui.graphContainer.style.opacity = '1';
+                ui.graphContainer.style.pointerEvents = 'auto';
+                ui.globeContainer.style.opacity = '0';
+                ui.globeContainer.style.pointerEvents = 'none';
+                
+                ui.timelineContainer.style.opacity = '0';
+                ui.timelineContainer.style.pointerEvents = 'none';
+                
+                // Initialize graph if not done
+                if (!state.graphInitialized) {
+                    initGraph();
+                } else {
+                    // Force resize and restart physics
+                    graph.width(window.innerWidth);
+                    graph.height(window.innerHeight);
+                    graph.d3ReheatSimulation();
+                }
+                
+                if (world) world.controls().autoRotate = false;
+            }
+        }
+
+        function showInfoPanel(data) {
+            // Buscar datos originales (ForceGraph clona y muta objetos internamente)
+            const fullData = nodesData.find(n => n.id === data.id) || data;
+            
+            ui.infoTitle.innerHTML = fullData.name;
+            ui.infoType.textContent = fullData.type;
+            ui.infoCountry.textContent = fullData.country;
+            ui.infoYear.textContent = fullData.year === 0 ? "Bases Antiguas" : `Año Ref: ${fullData.year}`;
+            ui.infoDesc.innerHTML = fullData.desc;
+
+            // Trazabilidad del origen del dato: sembrado curado, sistema INGENIUM o aporte local
+            if (fullData.origin === 'user') {
+                ui.infoOrigin.textContent = 'Aporte local del usuario';
+                ui.infoOrigin.classList.remove('hidden');
+            } else if (fullData.origin === 'api') {
+                ui.infoOrigin.textContent = 'Cargado desde el sistema INGENIUM';
+                ui.infoOrigin.classList.remove('hidden');
+            } else {
+                ui.infoOrigin.classList.add('hidden');
+            }
+            
+            // Animación de entrada
+            ui.infoPanel.classList.remove('translate-x-8', 'opacity-0');
+            ui.infoPanel.classList.add('translate-x-0', 'opacity-100');
+        }
+
+        function hideInfoPanel() {
+            // Animación de salida
+            ui.infoPanel.classList.remove('translate-x-0', 'opacity-100');
+            ui.infoPanel.classList.add('translate-x-8', 'opacity-0');
+        }
+
+        // ==========================================
+        // ANEXAR DOCUMENTOS / NODOS (borrador local + puente al sistema INGENIUM)
+        // ==========================================
+
+        function slugify(text) {
+            return text.toString().toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'nodo';
+        }
+
+        function removeInPlace(arr, predicate) {
+            for (let i = arr.length - 1; i >= 0; i--) {
+                if (predicate(arr[i])) arr.splice(i, 1);
+            }
+        }
+
+        // Carga, al abrir la página, los nodos/enlaces que el propio usuario anexó en sesiones
+        // anteriores desde este mismo navegador (no se inventa nada: son datos que él mismo aportó).
+        function loadUserContributions() {
+            try {
+                const savedNodes = JSON.parse(localStorage.getItem('ingenium_user_nodes') || '[]');
+                const savedLinks = JSON.parse(localStorage.getItem('ingenium_user_links') || '[]');
+                savedNodes.forEach(n => { if (!nodesData.some(existing => existing.id === n.id)) nodesData.push(n); });
+                savedLinks.forEach(l => { if (!linksData.some(existing => existing.source === l.source && existing.target === l.target && existing.label === l.label)) linksData.push(l); });
+            } catch (err) {
+                console.warn('No se pudieron cargar los aportes locales guardados:', err);
+            }
+        }
+
+        function persistUserContributions() {
+            localStorage.setItem('ingenium_user_nodes', JSON.stringify(nodesData.filter(n => n.origin === 'user')));
+            localStorage.setItem('ingenium_user_links', JSON.stringify(linksData.filter(l => l.origin === 'user')));
+        }
+
+        // Punto de integración con el backend real de INGENIUM TRACKER (FastAPI, GET /api/v1/graph).
+        // Si el endpoint no está desplegado o no es alcanzable, falla en silencio: el visualizador
+        // sigue funcionando con el mapa curado + los aportes locales del usuario.
+        async function tryLoadFromIngeniumAPI() {
+            const API_BASE = window.INGENIUM_API_BASE || '';
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2500);
+                const res = await fetch(`${API_BASE}/api/v1/graph`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (!res.ok) return;
+                const payload = await res.json();
+                (payload.nodes || []).forEach(n => {
+                    if (!nodesData.some(existing => existing.id === n.id)) nodesData.push({ ...n, origin: n.origin || 'api' });
+                });
+                (payload.links || []).forEach(l => {
+                    if (!linksData.some(existing => existing.source === l.source && existing.target === l.target && existing.label === l.label)) {
+                        linksData.push({ ...l, origin: l.origin || 'api' });
+                    }
+                });
+                console.info('INGENIUM TRACKER: datos del sistema cargados desde la API en', `${API_BASE}/api/v1/graph`);
+            } catch (err) {
+                // Backend real aún no desplegado/alcanzable: se continúa solo con el mapa curado.
+            }
+        }
+
+        function populateConnectOptions() {
+            ui.docConnect.innerHTML = '';
+            [...nodesData].sort((a, b) => a.name.localeCompare(b.name)).forEach(n => {
+                const opt = document.createElement('option');
+                opt.value = n.id;
+                opt.textContent = `${n.name} (${n.year === 0 ? 'Antigüedad' : n.year})`;
+                ui.docConnect.appendChild(opt);
+            });
+        }
+
+        function openAddDocModal() {
+            populateConnectOptions();
+            ui.addDocModal.classList.remove('hidden');
+        }
+
+        function closeAddDocModal() {
+            ui.addDocModal.classList.add('hidden');
+            ui.addDocForm.reset();
+        }
+
+        function handleAddDocSubmit(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('doc-name').value.trim();
+            const year = parseInt(document.getElementById('doc-year').value, 10);
+            const type = document.getElementById('doc-type').value.trim();
+            const country = document.getElementById('doc-country').value.trim();
+            const latRaw = document.getElementById('doc-lat').value;
+            const lngRaw = document.getElementById('doc-lng').value;
+            const desc = document.getElementById('doc-desc').value.trim();
+            const relationLabel = document.getElementById('doc-relation-label').value.trim() || 'Relación aportada por el usuario';
+            const connectIds = Array.from(ui.docConnect.selectedOptions).map(o => o.value);
+
+            if (!name || Number.isNaN(year) || !type || !country || !desc) return;
+
+            const id = `user-${slugify(name)}-${Date.now()}`;
+            const newNode = {
+                id, name, year,
+                yearRange: [Math.min(year, 2050), 2050],
+                country, type,
+                lat: latRaw !== '' ? parseFloat(latRaw) : null,
+                lng: lngRaw !== '' ? parseFloat(lngRaw) : null,
+                desc: `${desc}<br/><br/><span class="text-xs text-amber-300">Nodo anexado localmente por el usuario.</span>`,
+                group: 10,
+                origin: 'user'
+            };
+
+            nodesData.push(newNode);
+            connectIds.forEach(targetId => {
+                linksData.push({ source: id, target: targetId, label: relationLabel, origin: 'user' });
+            });
+
+            rebuildGlobeLinks();
+            persistUserContributions();
+
+            // Anexar en caliente a la Red Conceptual ya inicializada, sin perder el layout existente
+            if (state.graphInitialized && currentGraphData) {
+                currentGraphData.nodes.push(JSON.parse(JSON.stringify(newNode)));
+                connectIds.forEach(targetId => {
+                    currentGraphData.links.push({ source: id, target: targetId, label: relationLabel, origin: 'user' });
+                });
+                refreshGraphData();
+            }
+
+            updateDataByYear();
+            closeAddDocModal();
+            showInfoPanel(newNode);
+        }
+
+        function exportUserContributions() {
+            const data = {
+                nodes: nodesData.filter(n => n.origin === 'user'),
+                links: linksData.filter(l => l.origin === 'user')
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ingenium-aportes-locales.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function clearUserContributions() {
+            if (!confirm('¿Borrar todos los nodos y enlaces que anexaste localmente? Esta acción no se puede deshacer.')) return;
+            const userIds = new Set(nodesData.filter(n => n.origin === 'user').map(n => n.id));
+            removeInPlace(nodesData, n => n.origin === 'user');
+            removeInPlace(linksData, l => l.origin === 'user' || userIds.has(l.source) || userIds.has(l.target));
+            rebuildGlobeLinks();
+            localStorage.removeItem('ingenium_user_nodes');
+            localStorage.removeItem('ingenium_user_links');
+            if (state.graphInitialized) {
+                currentGraphData = {
+                    nodes: JSON.parse(JSON.stringify(nodesData)),
+                    links: JSON.parse(JSON.stringify(linksData))
+                };
+                // Re-fijar a Huarte en el centro: se pierde fx/fy/fz al reconstruir el clon
+                const centralNode = currentGraphData.nodes.find(n => n.central);
+                if (centralNode) { centralNode.fx = 0; centralNode.fy = 0; centralNode.fz = 0; }
+                refreshGraphData();
+            }
+            updateDataByYear();
+            hideInfoPanel();
+        }
+
+        // ==========================================
+        // ASIGNACIÓN DE EVENTOS
+        // ==========================================
+        ui.btnGlobe.addEventListener('click', () => switchView('globe'));
+        ui.btnGraph.addEventListener('click', () => switchView('graph'));
+        ui.closeInfo.addEventListener('click', hideInfoPanel);
+        ui.btnAddDoc.addEventListener('click', openAddDocModal);
+        ui.closeAddDoc.addEventListener('click', closeAddDocModal);
+        ui.addDocForm.addEventListener('submit', handleAddDocSubmit);
+        ui.exportUserDocs.addEventListener('click', exportUserContributions);
+        ui.clearUserDocs.addEventListener('click', clearUserContributions);
+        ui.addDocModal.addEventListener('click', (e) => { if (e.target === ui.addDocModal) closeAddDocModal(); });
+        
+        // Manejador del Slider (Time Travel)
+        ui.timeSlider.addEventListener('input', (e) => {
+            state.currentYear = parseInt(e.target.value);
+            ui.yearDisplay.textContent = state.currentYear;
+            ui.eraDisplay.textContent = getEra(state.currentYear);
+            
+            // Despertar a la UI cerrando el panel para enfocar en el mapa
+            hideInfoPanel();
+            
+            updateDataByYear();
+        });
+
+        // Responsividad: Recalcular tamaño de los canvas en resize
+        window.addEventListener('resize', () => {
+            if (state.view === 'globe' && world) {
+                world.width(window.innerWidth).height(window.innerHeight);
+            } else if (state.view === 'graph' && graph) {
+                graph.width(window.innerWidth).height(window.innerHeight);
+            }
+        });
+
+        // Arranque Inicial
+        window.onload = async () => {
+            // 1) Recuperar aportes locales de sesiones previas del usuario en este navegador
+            loadUserContributions();
+            // 2) Intentar nutrir el mapa con el sistema INGENIUM real (silencioso si no está disponible)
+            await tryLoadFromIngeniumAPI();
+            rebuildGlobeLinks();
+
+            initGlobe();
+            updateDataByYear();
+            ui.eraDisplay.textContent = getEra(state.currentYear);
+        };
+    </script>
+</body>
+</html>
