@@ -1,0 +1,3 @@
+# Sin dependencias externas a propósito: serve_atlas.py solo usa la
+# librería estándar de Python (http.server). Este archivo existe para que
+# Railway/Nixpacks detecte el servicio como una app Python.
